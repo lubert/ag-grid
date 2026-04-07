@@ -206,9 +206,19 @@ export class ColumnFilterService
         }
     }
 
+    private controlledFilterInitialised = false;
+
     public postConstruct(): void {
         this.addManagedEventListeners({
-            gridColumnsChanged: this.onColumnsChanged.bind(this),
+            gridColumnsChanged: () => {
+                this.onColumnsChanged();
+                // Apply controlled filter model once columns are ready
+                if (this.isControlledFilterMode() && !this.controlledFilterInitialised) {
+                    this.controlledFilterInitialised = true;
+                    const controlledModel = this.gos.get('filterModel') ?? {};
+                    this.setModel(controlledModel, 'api');
+                }
+            },
             dataTypesInferred: this.processFilterModelUpdateQueue.bind(this),
         });
 
@@ -223,9 +233,11 @@ export class ColumnFilterService
             ...initialFilterModel,
         };
 
-        // In controlled mode, initialise internal model from the filterModel prop
+        // In controlled mode, seed the model so isFilterActive/isFilterPresent
+        // return correct values before filter wrappers are created
         const controlledModel = gos.get('filterModel');
         if (controlledModel) {
+            this.initialModel = { ...controlledModel };
             this.model = { ...controlledModel };
         }
 
@@ -239,8 +251,8 @@ export class ColumnFilterService
                 return;
             }
             const newModel = this.gos.get('filterModel') ?? {};
-            this.model = { ...newModel };
-            // Apply the new model through the standard path so filters update
+            this.initialModel = { ...newModel };
+            // Apply the new model through the standard path so filters update and rows re-filter
             this.setModel(newModel, 'api');
         });
     }
@@ -325,8 +337,10 @@ export class ColumnFilterService
     }
 
     public getModel(excludeInitialState?: boolean): FilterModel {
-        // In controlled mode, the prop is the source of truth
-        if (this.isControlledFilterMode()) {
+        // In controlled mode, the prop is the source of truth for external callers.
+        // Internal calls with excludeInitialState=true are used for diffing and should
+        // return the actual internal state to detect changes.
+        if (this.isControlledFilterMode() && !excludeInitialState) {
             return { ...(this.gos.get('filterModel') ?? {}) };
         }
 
@@ -1676,6 +1690,20 @@ export class ColumnFilterService
     }
 
     public setModelForColumn(key: string | AgColumn, model: any): Promise<void> {
+        if (this.isControlledFilterMode()) {
+            // In controlled mode, route through onFilterModelChange callback
+            const column = this.beans.colModel.getColDefCol(key);
+            const colId = column?.getColId() ?? (typeof key === 'string' ? key : key.getColId());
+            const currentModel = this.gos.get('filterModel') ?? {};
+            const proposedModel = { ...currentModel };
+            if (model == null) {
+                delete proposedModel[colId];
+            } else {
+                proposedModel[colId] = model;
+            }
+            this.fireControlledFilterChange(proposedModel);
+            return Promise.resolve();
+        }
         if (this.beans.dataTypeSvc?.isPendingInference) {
             let resolve: () => void = () => {};
             const promise = new Promise<void>((res) => {
