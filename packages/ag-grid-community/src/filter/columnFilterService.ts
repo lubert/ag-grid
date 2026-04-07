@@ -197,16 +197,37 @@ export class ColumnFilterService
 
     /**
      * In controlled mode, fires the onFilterModelChange callback with a proposed new model
-     * instead of updating internal state.
+     * instead of updating internal state. Multiple calls within the same microtask are
+     * batched into a single callback with the final model.
      */
-    private fireControlledFilterChange(proposedModel: FilterModel): void {
-        const callback = this.gos.get('onFilterModelChange');
-        if (callback) {
-            callback(proposedModel);
+    private pendingControlledModel: FilterModel | null = null;
+    private pendingControlledSource: FilterChangedEventSourceType | null = null;
+    private controlledChangePending = false;
+
+    private fireControlledFilterChange(proposedModel: FilterModel, source: FilterChangedEventSourceType): void {
+        if (this.isSyncingControlledModel) {
+            return;
+        }
+        this.pendingControlledModel = this.pendingControlledModel
+            ? { ...this.pendingControlledModel, ...proposedModel }
+            : proposedModel;
+        this.pendingControlledSource = source;
+        if (!this.controlledChangePending) {
+            this.controlledChangePending = true;
+            queueMicrotask(() => {
+                const callback = this.gos.get('onFilterModelChange');
+                if (callback && this.pendingControlledModel != null) {
+                    callback(this.pendingControlledModel, this.pendingControlledSource!);
+                }
+                this.pendingControlledModel = null;
+                this.pendingControlledSource = null;
+                this.controlledChangePending = false;
+            });
         }
     }
 
     private controlledFilterInitialised = false;
+    private isSyncingControlledModel = false;
 
     public postConstruct(): void {
         this.addManagedEventListeners({
@@ -253,7 +274,15 @@ export class ColumnFilterService
             const newModel = this.gos.get('filterModel') ?? {};
             this.initialModel = { ...newModel };
             // Apply the new model through the standard path so filters update and rows re-filter
-            this.setModel(newModel, 'api');
+            this.isSyncingControlledModel = true;
+            const result = this.setModel(newModel, 'api');
+            if (result) {
+                result.then(() => {
+                    this.isSyncingControlledModel = false;
+                });
+            } else {
+                this.isSyncingControlledModel = false;
+            }
         });
     }
 
@@ -266,7 +295,7 @@ export class ColumnFilterService
         model: FilterModel | null,
         source: FilterChangedEventSourceType = 'api',
         forceUpdateActive?: boolean
-    ): void {
+    ): AgPromise<void> | void {
         const { colModel, dataTypeSvc, filterManager } = this.beans;
         if (dataTypeSvc?.isPendingInference) {
             this.modelUpdates.push({ model, source });
@@ -315,7 +344,7 @@ export class ColumnFilterService
             });
         }
 
-        AgPromise.all(allPromises).then(() => {
+        return AgPromise.all(allPromises).then(() => {
             const currentModel = this.getModel(true);
 
             const columns: AgColumn[] = [];
@@ -929,7 +958,7 @@ export class ColumnFilterService
                     } else {
                         proposedModel[colId] = model;
                     }
-                    this.fireControlledFilterChange(proposedModel);
+                    this.fireControlledFilterChange(proposedModel, 'columnFilter');
                     return;
                 }
                 this.updateStoredModel(colId, model);
@@ -946,7 +975,7 @@ export class ColumnFilterService
                     // In controlled mode, route action-based model changes through callback
                     this.updateModel(column, action, additionalEventAttributes);
                     const proposedModel = { ...this.model };
-                    this.fireControlledFilterChange(proposedModel);
+                    this.fireControlledFilterChange(proposedModel, 'columnFilter');
                     // Revert internal model to match the controlled prop
                     this.model = { ...(this.gos.get('filterModel') ?? {}) };
                     return;
@@ -1189,7 +1218,7 @@ export class ColumnFilterService
                     } else {
                         proposedModel[colId] = newModel;
                     }
-                    this.fireControlledFilterChange(proposedModel);
+                    this.fireControlledFilterChange(proposedModel, 'columnFilter');
                     return;
                 }
                 this.updateStoredModel(colId, newModel);
@@ -1300,7 +1329,7 @@ export class ColumnFilterService
                     } else {
                         proposedModel[colId] = model;
                     }
-                    this.fireControlledFilterChange(proposedModel);
+                    this.fireControlledFilterChange(proposedModel, 'columnFilter');
                     return;
                 }
                 this.updateStoredModel(colId, model);
@@ -1441,13 +1470,20 @@ export class ColumnFilterService
                 if (filterWrapper) {
                     const filterModel = this.getModelFromFilterWrapper(filterWrapper);
                     const currentModel = this.gos.get('filterModel') ?? {};
+
+                    // Skip if the filter already matches the controlled prop (prop sync echo)
+                    const propModel = currentModel[colId] ?? null;
+                    if (_jsonEquals(filterModel, propModel)) {
+                        return;
+                    }
+
                     const proposedModel = { ...currentModel };
                     if (filterModel == null) {
                         delete proposedModel[colId];
                     } else {
                         proposedModel[colId] = filterModel;
                     }
-                    this.fireControlledFilterChange(proposedModel);
+                    this.fireControlledFilterChange(proposedModel, 'columnFilter');
                 }
                 return;
             }
@@ -1701,7 +1737,7 @@ export class ColumnFilterService
             } else {
                 proposedModel[colId] = model;
             }
-            this.fireControlledFilterChange(proposedModel);
+            this.fireControlledFilterChange(proposedModel, 'api');
             return Promise.resolve();
         }
         if (this.beans.dataTypeSvc?.isPendingInference) {

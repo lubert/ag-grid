@@ -1,4 +1,4 @@
-import { ClientSideRowModelModule, TextFilterModule, NumberFilterModule, setupAgTestIds } from 'ag-grid-community';
+import { ClientSideRowModelModule, NumberFilterModule, TextFilterModule, setupAgTestIds } from 'ag-grid-community';
 import type { FilterModel } from 'ag-grid-community';
 
 import { GridRows, TestGridsManager, asyncSetTimeout } from '../test-utils';
@@ -195,6 +195,131 @@ describe('Controlled Filters', () => {
             await asyncSetTimeout(0);
 
             // Name contains 'a' AND age > 29: Alice (30), Charlie (35)
+            const displayedRows = getDisplayedRowData(api);
+            expect(displayedRows).toHaveLength(2);
+            expect(displayedRows.map((r) => r.name).sort()).toEqual(['Alice', 'Charlie']);
+        });
+
+        test('onFilterModelChange does not fire during prop sync', async () => {
+            const onFilterModelChange = vi.fn();
+
+            const api = await gridsManager.createGridAndWait('grid1', {
+                columnDefs: [
+                    { field: 'name', filter: 'agTextColumnFilter' },
+                    { field: 'age', filter: 'agNumberColumnFilter' },
+                ],
+                rowData,
+                filterModel: {},
+                onFilterModelChange,
+            });
+
+            await asyncSetTimeout(0);
+
+            onFilterModelChange.mockClear();
+
+            // Update filterModel prop — this should NOT fire onFilterModelChange
+            api.setGridOption('filterModel', {
+                name: { filterType: 'text', type: 'contains', filter: 'a' },
+            });
+
+            await asyncSetTimeout(0);
+
+            expect(onFilterModelChange).not.toHaveBeenCalled();
+
+            // But the filter should still be applied
+            const displayedRows = getDisplayedRowData(api);
+            expect(displayedRows).toHaveLength(3);
+            expect(displayedRows.map((r) => r.name)).toEqual(['Alice', 'Charlie', 'Diana']);
+        });
+
+        test('onFilterModelChange receives api source for setColumnFilterModel', async () => {
+            const onFilterModelChange = vi.fn();
+
+            const api = await gridsManager.createGridAndWait('grid1', {
+                columnDefs: [
+                    { field: 'name', filter: 'agTextColumnFilter' },
+                    { field: 'age', filter: 'agNumberColumnFilter' },
+                ],
+                rowData,
+                filterModel: {},
+                onFilterModelChange,
+            });
+
+            await asyncSetTimeout(0);
+
+            // setColumnFilterModel routes through setModelForColumn (the 'api' call site)
+            await api.setColumnFilterModel('name', {
+                filterType: 'text',
+                type: 'contains',
+                filter: 'Bob',
+            });
+
+            await asyncSetTimeout(0);
+
+            expect(onFilterModelChange).toHaveBeenCalledTimes(1);
+            const [proposedModel, source] = onFilterModelChange.mock.calls[0];
+            expect(proposedModel.name).toBeDefined();
+            expect(source).toBe('api');
+        });
+
+        test('multiple setColumnFilterModel calls within same tick are batched into one callback', async () => {
+            const onFilterModelChange = vi.fn();
+
+            const api = await gridsManager.createGridAndWait('grid1', {
+                columnDefs: [
+                    { field: 'name', filter: 'agTextColumnFilter' },
+                    { field: 'age', filter: 'agNumberColumnFilter' },
+                ],
+                rowData,
+                filterModel: {},
+                onFilterModelChange,
+            });
+
+            await asyncSetTimeout(0);
+
+            onFilterModelChange.mockClear();
+
+            // Simulate a player filter that maps to two columns — fire both without awaiting
+            api.setColumnFilterModel('name', { filterType: 'text', type: 'contains', filter: 'a' });
+            api.setColumnFilterModel('age', { filterType: 'number', type: 'greaterThan', filter: 29 });
+
+            await asyncSetTimeout(0);
+
+            // Should batch into a single callback, not fire twice
+            expect(onFilterModelChange).toHaveBeenCalledTimes(1);
+            const [proposedModel] = onFilterModelChange.mock.calls[0];
+            expect(proposedModel.name).toBeDefined();
+            expect(proposedModel.age).toBeDefined();
+        });
+
+        test('multi-column prop update does not fire onFilterModelChange', async () => {
+            const onFilterModelChange = vi.fn();
+
+            const api = await gridsManager.createGridAndWait('grid1', {
+                columnDefs: [
+                    { field: 'name', filter: 'agTextColumnFilter' },
+                    { field: 'age', filter: 'agNumberColumnFilter' },
+                ],
+                rowData,
+                filterModel: {},
+                onFilterModelChange,
+            });
+
+            await asyncSetTimeout(0);
+
+            onFilterModelChange.mockClear();
+
+            // Set a multi-column filterModel — previously this would fire once per column
+            api.setGridOption('filterModel', {
+                name: { filterType: 'text', type: 'contains', filter: 'a' },
+                age: { filterType: 'number', type: 'greaterThan', filter: 29 },
+            });
+
+            await asyncSetTimeout(0);
+
+            expect(onFilterModelChange).not.toHaveBeenCalled();
+
+            // Filters should still be applied: name contains 'a' AND age > 29
             const displayedRows = getDisplayedRowData(api);
             expect(displayedRows).toHaveLength(2);
             expect(displayedRows.map((r) => r.name).sort()).toEqual(['Alice', 'Charlie']);

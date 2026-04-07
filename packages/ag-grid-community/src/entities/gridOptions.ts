@@ -62,6 +62,7 @@ import type {
     FillEndEvent,
     FillStartEvent,
     FilterChangedEvent,
+    FilterChangedEventSourceType,
     FilterModifiedEvent,
     FilterOpenedEvent,
     FilterUiChangedEvent,
@@ -789,7 +790,7 @@ export interface GridOptions<TData = any> {
      * (`filterModel` prop is provided). The grid does NOT update its internal filter model;
      * the parent should update `filterModel` to apply the change.
      */
-    onFilterModelChange?: (model: FilterModel) => void;
+    onFilterModelChange?: (model: FilterModel, source: FilterChangedEventSourceType) => void;
 
     // *** Integrated Charts *** //
     /**
