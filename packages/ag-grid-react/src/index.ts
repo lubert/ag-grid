@@ -1,4 +1,6 @@
 export { AgGridReact } from './agGridReact';
+export { AgControlledGridReact } from './agControlledGridReact';
+export type { AgControlledGridProps } from './agControlledGridReact';
 export * from './shared/interfaces';
 export * from './shared/customComp/interfaces';
 export * from './shared/customComp/util';

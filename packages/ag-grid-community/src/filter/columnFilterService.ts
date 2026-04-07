@@ -190,6 +190,22 @@ export class ColumnFilterService
     public isGlobalButtons: boolean = false;
     public activeFilterComps: Set<FilterComp> = new Set();
 
+    /** Returns true when the grid is in controlled filter mode (filterModel prop is provided). */
+    private isControlledFilterMode(): boolean {
+        return this.gos.exists('filterModel');
+    }
+
+    /**
+     * In controlled mode, fires the onFilterModelChange callback with a proposed new model
+     * instead of updating internal state.
+     */
+    private fireControlledFilterChange(proposedModel: FilterModel): void {
+        const callback = this.gos.get('onFilterModelChange');
+        if (callback) {
+            callback(proposedModel);
+        }
+    }
+
     public postConstruct(): void {
         this.addManagedEventListeners({
             gridColumnsChanged: this.onColumnsChanged.bind(this),
@@ -206,9 +222,27 @@ export class ColumnFilterService
         this.model = {
             ...initialFilterModel,
         };
+
+        // In controlled mode, initialise internal model from the filterModel prop
+        const controlledModel = gos.get('filterModel');
+        if (controlledModel) {
+            this.model = { ...controlledModel };
+        }
+
         if (!gos.get('enableFilterHandlers')) {
             delete this.handlerMap['agMultiColumnFilter'];
         }
+
+        // Listen for filterModel prop changes and apply them
+        this.addManagedPropertyListener('filterModel', () => {
+            if (!this.isControlledFilterMode()) {
+                return;
+            }
+            const newModel = this.gos.get('filterModel') ?? {};
+            this.model = { ...newModel };
+            // Apply the new model through the standard path so filters update
+            this.setModel(newModel, 'api');
+        });
     }
 
     public refreshModel() {
@@ -291,6 +325,11 @@ export class ColumnFilterService
     }
 
     public getModel(excludeInitialState?: boolean): FilterModel {
+        // In controlled mode, the prop is the source of truth
+        if (this.isControlledFilterMode()) {
+            return { ...(this.gos.get('filterModel') ?? {}) };
+        }
+
         const result: FilterModel = {};
 
         const {
@@ -374,6 +413,10 @@ export class ColumnFilterService
     }
 
     public isFilterPresent(): boolean {
+        if (this.isControlledFilterMode()) {
+            const controlledModel = this.gos.get('filterModel') ?? {};
+            return Object.keys(controlledModel).length > 0;
+        }
         return this.activeColumnFilters.length > 0;
     }
 
@@ -647,6 +690,12 @@ export class ColumnFilterService
     }
 
     public isFilterActive(column: AgColumn): boolean {
+        // In controlled mode, the prop determines active state
+        if (this.isControlledFilterMode()) {
+            const controlledModel = this.gos.get('filterModel') ?? {};
+            return _exists(_getFilterModel(controlledModel, column.getColId()));
+        }
+
         const filterWrapper = this.cachedFilter(column);
         if (filterWrapper?.isHandler) {
             return this.isHandlerActive(column);
@@ -857,6 +906,18 @@ export class ColumnFilterService
                 model,
             };
             displayParams.onModelChange = (model, additionalEventAttributes) => {
+                if (this.isControlledFilterMode()) {
+                    // In controlled mode, propose the change via callback instead of applying it
+                    const currentModel = this.gos.get('filterModel') ?? {};
+                    const proposedModel = { ...currentModel };
+                    if (model == null) {
+                        delete proposedModel[colId];
+                    } else {
+                        proposedModel[colId] = model;
+                    }
+                    this.fireControlledFilterChange(proposedModel);
+                    return;
+                }
                 this.updateStoredModel(colId, model);
                 this.refreshHandlerAndUi(column, model, 'ui', false, additionalEventAttributes).then(() => {
                     filterChangedCallback({ ...additionalEventAttributes, source: 'columnFilter' });
@@ -867,6 +928,15 @@ export class ColumnFilterService
                 this.updateOrRefreshFilterUi(column);
             };
             displayParams.onAction = (action, additionalEventAttributes, event) => {
+                if (this.isControlledFilterMode()) {
+                    // In controlled mode, route action-based model changes through callback
+                    this.updateModel(column, action, additionalEventAttributes);
+                    const proposedModel = { ...this.model };
+                    this.fireControlledFilterChange(proposedModel);
+                    // Revert internal model to match the controlled prop
+                    this.model = { ...(this.gos.get('filterModel') ?? {}) };
+                    return;
+                }
                 this.updateModel(column, action, additionalEventAttributes);
                 this.dispatchLocalEvent<FilterActionEvent>({
                     type: 'filterAction',
@@ -1097,6 +1167,17 @@ export class ColumnFilterService
             doesRowPassOtherFilter: (node) =>
                 this.beans.filterManager?.doesRowPassOtherFilters(colId, node as RowNode) ?? true,
             onModelChange: (newModel, additionalEventAttributes) => {
+                if (this.isControlledFilterMode()) {
+                    const currentModel = this.gos.get('filterModel') ?? {};
+                    const proposedModel = { ...currentModel };
+                    if (newModel == null) {
+                        delete proposedModel[colId];
+                    } else {
+                        proposedModel[colId] = newModel;
+                    }
+                    this.fireControlledFilterChange(proposedModel);
+                    return;
+                }
                 this.updateStoredModel(colId, newModel);
                 this.refreshHandlerAndUi(column, newModel, 'handler', false, additionalEventAttributes).then(() => {
                     filterChangedCallback({ ...additionalEventAttributes, source: 'columnFilter' });
@@ -1197,6 +1278,17 @@ export class ColumnFilterService
                 this.floatingFilterUiChanged(column, additionalEventAttributes);
             displayParams.model = _getFilterModel(this.model, colId);
             displayParams.onModelChange = (model, additionalEventAttributes) => {
+                if (this.isControlledFilterMode()) {
+                    const currentModel = this.gos.get('filterModel') ?? {};
+                    const proposedModel = { ...currentModel };
+                    if (model == null) {
+                        delete proposedModel[colId];
+                    } else {
+                        proposedModel[colId] = model;
+                    }
+                    this.fireControlledFilterChange(proposedModel);
+                    return;
+                }
                 this.updateStoredModel(colId, model);
                 this.refreshHandlerAndUi(column, model, 'floating', true, additionalEventAttributes).then(() => {
                     filterChangedCallback({ ...additionalEventAttributes, source: 'columnFilter' });
@@ -1327,6 +1419,24 @@ export class ColumnFilterService
 
     private filterChangedCallbackFactory(column: AgColumn): (additionalEventAttributes?: any) => void {
         return (additionalEventAttributes?: any) => {
+            if (this.isControlledFilterMode() && additionalEventAttributes?.source !== 'api') {
+                // In controlled mode, intercept UI-driven filter changes.
+                // Read the filter's current model and propose it via callback.
+                const colId = column.getColId();
+                const filterWrapper = this.allColumnFilters.get(colId);
+                if (filterWrapper) {
+                    const filterModel = this.getModelFromFilterWrapper(filterWrapper);
+                    const currentModel = this.gos.get('filterModel') ?? {};
+                    const proposedModel = { ...currentModel };
+                    if (filterModel == null) {
+                        delete proposedModel[colId];
+                    } else {
+                        proposedModel[colId] = filterModel;
+                    }
+                    this.fireControlledFilterChange(proposedModel);
+                }
+                return;
+            }
             this.callOnFilterChangedOutsideRenderCycle({
                 additionalEventAttributes,
                 columns: [column],

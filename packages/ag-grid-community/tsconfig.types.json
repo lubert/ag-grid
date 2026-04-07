@@ -7,6 +7,6 @@
     "module": "preserve",
     "moduleResolution": "bundler"
   },
-  "include": ["src/main.ts", "src/typings.ts"],
-  "exclude": ["src/main-styles.ts", "src/*.test.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/main-styles.ts", "src/**/*.test.ts", "src/test-utils/**"]
 }

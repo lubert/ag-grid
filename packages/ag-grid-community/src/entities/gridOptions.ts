@@ -178,7 +178,13 @@ import type {
 import type { AgGridCommon } from '../interfaces/iCommon';
 import type { IDatasource } from '../interfaces/iDatasource';
 import type { ExcelExportParams, ExcelStyle } from '../interfaces/iExcelCreator';
-import type { AlwaysPassFilter, FilterHandlers, QuickFilterMatcher, QuickFilterParser } from '../interfaces/iFilter';
+import type {
+    AlwaysPassFilter,
+    FilterHandlers,
+    FilterModel,
+    QuickFilterMatcher,
+    QuickFilterParser,
+} from '../interfaces/iFilter';
 import type { FindOptions } from '../interfaces/iFind';
 import type { ILoadingCellRendererParams } from '../interfaces/iLoadingCellRenderer';
 import type { RowDragTextFunc } from '../interfaces/iRowDragItem';
@@ -771,6 +777,19 @@ export interface GridOptions<TData = any> {
      * @initial
      */
     filterHandlers?: FilterHandlers<TData>;
+
+    /**
+     * Externally controlled filter state. When provided, the grid is in controlled filter mode:
+     * filter UIs reflect this prop, user interactions fire `onFilterModelChange` instead of
+     * updating internal state, and the grid re-filters only when this prop changes.
+     */
+    filterModel?: FilterModel;
+    /**
+     * Called when the user changes a filter via the UI while in controlled filter mode
+     * (`filterModel` prop is provided). The grid does NOT update its internal filter model;
+     * the parent should update `filterModel` to apply the change.
+     */
+    onFilterModelChange?: (model: FilterModel) => void;
 
     // *** Integrated Charts *** //
     /**
