@@ -28,6 +28,10 @@ interface BaseAddPopupParams<TContainerType extends string> {
     // eg if cellComp element is passed, what happens if row moves (sorting, filtering etc)? best anchor against
     // the grid, not the cell.
     anchorToElement?: HTMLElement;
+    // mousedown / touchstart events whose path includes this element are treated as inside the popup
+    // (so a modal popup won't auto-close on them). useful for trigger buttons so callers can implement
+    // a toggle on the trigger without fighting the modal's outside-click close.
+    triggerElement?: HTMLElement;
 }
 
 interface LabelAddPopupParams<TContainerType extends string> extends BaseAddPopupParams<TContainerType> {

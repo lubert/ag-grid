@@ -59,7 +59,14 @@ export class MenuService extends BeanStub implements NamedBean {
     }
 
     public showFilterMenu(params: ShowFilterMenuParams): void {
-        this.showColumnMenuCommon(getFilterMenuFactory(this.beans), params, params.containerType, true);
+        // If the filter for this column is already shown, treat the call as a toggle and close it.
+        const factory = getFilterMenuFactory(this.beans);
+        const column = params.column as AgColumn | undefined;
+        if (column && factory?.isMenuShownFor?.(column)) {
+            factory.hideActiveMenu();
+            return;
+        }
+        this.showColumnMenuCommon(factory, params, params.containerType, true);
     }
 
     public showHeaderContextMenu(

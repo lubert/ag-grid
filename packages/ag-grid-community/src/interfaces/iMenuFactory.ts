@@ -27,4 +27,5 @@ export interface IMenuFactory {
     ): void;
     isMenuEnabled(column: AgColumn): boolean;
     hideActiveMenu(): void;
+    isMenuShownFor?(column: AgColumn): boolean;
 }

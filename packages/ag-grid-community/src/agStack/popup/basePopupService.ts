@@ -489,7 +489,16 @@ export abstract class BasePopupService<
         const beans = this.beans;
         const eDocument = _getDocument(beans);
 
-        const { wrapperEl, eChild: popupEl, closedCallback, afterGuiAttached, closeOnEsc, modal, ariaOwns } = params;
+        const {
+            wrapperEl,
+            eChild: popupEl,
+            closedCallback,
+            afterGuiAttached,
+            closeOnEsc,
+            modal,
+            ariaOwns,
+            triggerElement,
+        } = params;
 
         let popupHidden = false;
 
@@ -515,6 +524,10 @@ export abstract class BasePopupService<
                 // we don't hide popup if the event was on the child, or any
                 // children of this child
                 (this.isEventFromCurrentPopup({ mouseEvent, touchEvent }, popupEl) ||
+                    // we also don't hide if the event came from the trigger that opened the popup,
+                    // so callers can implement a click-to-toggle on the trigger without the modal
+                    // racing to close first and then the trigger re-opening
+                    this.isEventFromTriggerElement({ mouseEvent, touchEvent }, triggerElement) ||
                     // this method should only be called once. the client can have different
                     // paths, each one wanting to close, so this method may be called multiple times.
                     popupHidden)
@@ -707,6 +720,17 @@ export abstract class BasePopupService<
                 });
             }, 'popupPositioning');
         });
+    }
+
+    private isEventFromTriggerElement(
+        params: PopupEventParams,
+        triggerElement: HTMLElement | undefined
+    ): boolean {
+        if (!triggerElement) {
+            return false;
+        }
+        const event = params.mouseEvent ?? params.touchEvent;
+        return !!event && _isElementInEventPath(triggerElement, event);
     }
 
     private isEventFromCurrentPopup(params: PopupEventParams, target: HTMLElement): boolean {

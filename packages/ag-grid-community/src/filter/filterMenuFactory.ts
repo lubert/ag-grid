@@ -27,9 +27,14 @@ export class FilterMenuFactory extends BeanStub implements NamedBean, IMenuFacto
     private hidePopup: () => void;
     private tabListener: null | (() => null);
     private activeMenu?: FilterComp;
+    private activeColumn?: AgColumn;
 
     public hideActiveMenu(): void {
         this.hidePopup?.();
+    }
+
+    public isMenuShownFor(column: AgColumn): boolean {
+        return this.activeColumn === column;
     }
 
     public showMenuAfterMouseEvent(
@@ -112,6 +117,7 @@ export class FilterMenuFactory extends BeanStub implements NamedBean, IMenuFacto
     ): void {
         const comp = column ? this.createBean(new FilterComp(column, 'COLUMN_MENU')) : undefined;
         this.activeMenu = comp;
+        this.activeColumn = column;
         if (!comp?.hasFilter() || !column) {
             _error(57);
             return;
@@ -150,6 +156,7 @@ export class FilterMenuFactory extends BeanStub implements NamedBean, IMenuFacto
             }
             afterGuiDetached();
             this.destroyBean(this.activeMenu);
+            this.activeColumn = undefined;
             this.dispatchVisibleChangedEvent(false, containerType, column);
             onClosedCallback?.();
         };
@@ -169,6 +176,7 @@ export class FilterMenuFactory extends BeanStub implements NamedBean, IMenuFacto
             positionCallback: () => positionCallback(eMenu),
             anchorToElement,
             ariaLabel,
+            triggerElement: eventSource,
         });
 
         if (addPopupRes) {
