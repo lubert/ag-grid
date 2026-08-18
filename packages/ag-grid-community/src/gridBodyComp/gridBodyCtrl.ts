@@ -446,16 +446,21 @@ export class GridBodyCtrl extends BeanStub {
      * A wheel listener is registered non-passive, so one on the body viewport puts
      * the whole grid into the browser's blocking wheel region: every wheel event
      * then has to round-trip through the main thread, including a hit test against
-     * the full grid DOM, before the scroll can be applied. The handler below only
-     * ever preventDefaults when suppressScrollWhenPopupsAreOpen is on, so while it
-     * is off we register nothing rather than pay that for a no-op. The option is
-     * settable at runtime, hence the sync on change.
+     * the full grid DOM, before the scroll can be applied. The handler can only
+     * preventDefault when suppressScrollWhenPopupsAreOpen is on, so we attach it
+     * only while that option is on rather than pay for a blocking region that can
+     * never be used. The option is settable at runtime, hence the sync on change.
      */
     private addBodyViewportWheelListener(popupSvc?: PopupService): void {
         let removeListener: (() => void) | null = null;
 
         const sync = () => {
-            const wanted = this.gos.get('suppressScrollWhenPopupsAreOpen');
+            // gos.get returns the raw option, so a truthy non-boolean (a Vue
+            // template attribute gives the string 'true') would never equal the
+            // boolean below, defeating the guard. gridOptionsChanged re-dispatches
+            // with force:true even when nothing changed, so that would attach a
+            // second listener on every dispatch and leak the first.
+            const wanted = !!this.gos.get('suppressScrollWhenPopupsAreOpen');
             if (wanted === (removeListener !== null)) {
                 return;
             }
@@ -474,6 +479,13 @@ export class GridBodyCtrl extends BeanStub {
     }
 
     private onBodyViewportWheel(popupSvc: PopupService | undefined, e: WheelEvent): void {
+        // Redundant with the registration rule above, but kept so the handler is
+        // correct on its own: an upstream merge that restores the unconditional
+        // registration must not silently re-enable suppression.
+        if (!this.gos.get('suppressScrollWhenPopupsAreOpen')) {
+            return;
+        }
+
         if (popupSvc?.hasAnchoredPopup()) {
             e.preventDefault();
         }

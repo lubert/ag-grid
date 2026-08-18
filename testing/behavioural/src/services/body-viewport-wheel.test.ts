@@ -51,9 +51,11 @@ describe('Body viewport wheel listener', () => {
     });
 
     afterEach(() => {
+        // Reset before restoring, so removals during grid destroy are still
+        // observed by the patched removeEventListener.
+        gridsManager.reset();
         HTMLElement.prototype.addEventListener = originalAdd;
         HTMLElement.prototype.removeEventListener = originalRemove;
-        gridsManager.reset();
     });
 
     const bodyViewportWheelListeners = () =>
@@ -84,8 +86,58 @@ describe('Body viewport wheel listener', () => {
 
         api.setGridOption('suppressScrollWhenPopupsAreOpen', true);
         expect(bodyViewportWheelListeners()).toHaveLength(1);
+        expect(bodyViewportWheelListeners()[0].passive).toBe(false);
 
         api.setGridOption('suppressScrollWhenPopupsAreOpen', false);
         expect(bodyViewportWheelListeners()).toHaveLength(0);
+    });
+
+    // gos.get returns the option uncoerced, so a truthy non-boolean must not
+    // defeat the "already registered?" guard. gridOptionsChanged re-dispatches
+    // property events with force:true even when nothing changed, so a defeated
+    // guard attaches another listener every time.
+    test('does not re-register when a truthy non-boolean option is re-dispatched', async () => {
+        const api = await gridsManager.createGridAndWait('grid1', {
+            columnDefs,
+            rowData,
+            suppressScrollWhenPopupsAreOpen: 'true' as unknown as boolean,
+        });
+        expect(bodyViewportWheelListeners()).toHaveLength(1);
+
+        // Frameworks re-push options on every render via this event, and
+        // gridOptionsService handles it with force:true, so property listeners
+        // re-run even though nothing changed. setGridOption cannot reach this
+        // path: it skips the dispatch when the value is unchanged.
+        const redispatch = () =>
+            (api as unknown as { dispatchEvent: (e: unknown) => void }).dispatchEvent({
+                type: 'gridOptionsChanged',
+                options: { suppressScrollWhenPopupsAreOpen: 'true' },
+            });
+        redispatch();
+        redispatch();
+
+        expect(bodyViewportWheelListeners()).toHaveLength(1);
+    });
+
+    // The handler is what the blocking region is bought for, so registration
+    // counts alone do not prove the feature still works.
+    test('preventDefaults a wheel event only while a popup is anchored', async () => {
+        await gridsManager.createGridAndWait('grid1', {
+            columnDefs,
+            rowData,
+            suppressScrollWhenPopupsAreOpen: true,
+        });
+
+        const viewport = document.querySelector('.ag-body-viewport') as HTMLElement;
+        expect(viewport).toBeTruthy();
+
+        const dispatch = () => {
+            const e = new WheelEvent('wheel', { cancelable: true, bubbles: true, deltaY: 100 });
+            viewport.dispatchEvent(e);
+            return e.defaultPrevented;
+        };
+
+        // No popup open: the handler must let the scroll through.
+        expect(dispatch()).toBe(false);
     });
 });
