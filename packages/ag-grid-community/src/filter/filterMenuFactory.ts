@@ -117,11 +117,11 @@ export class FilterMenuFactory extends BeanStub implements NamedBean, IMenuFacto
     ): void {
         const comp = column ? this.createBean(new FilterComp(column, 'COLUMN_MENU')) : undefined;
         this.activeMenu = comp;
-        this.activeColumn = column;
         if (!comp?.hasFilter() || !column) {
             _error(57);
             return;
         }
+        this.activeColumn = column;
 
         const eMenu = _createElement({
             tag: 'div',

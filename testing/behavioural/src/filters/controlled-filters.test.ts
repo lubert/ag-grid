@@ -292,6 +292,42 @@ describe('Controlled Filters', () => {
             expect(proposedModel.age).toBeDefined();
         });
 
+        test('showColumnFilter for an already-shown column closes the popup (toggle)', async () => {
+            const api = await gridsManager.createGridAndWait('grid1', {
+                columnDefs: [
+                    { field: 'name', filter: 'agTextColumnFilter' },
+                    { field: 'age', filter: 'agNumberColumnFilter' },
+                ],
+                rowData,
+                filterModel: {},
+                onFilterModelChange: () => {},
+            });
+
+            await asyncSetTimeout(0);
+
+            const isMenuVisible = () =>
+                document.querySelectorAll('.ag-filter-menu').length > 0;
+
+            // showColumnFilter uses positionBy: 'auto' which goes through
+            // requestAnimationFrame, so allow extra time for the popup to mount.
+            const waitForMenu = () => asyncSetTimeout(50);
+
+            // First call opens the filter menu.
+            api.showColumnFilter('age');
+            await waitForMenu();
+            expect(isMenuVisible()).toBe(true);
+
+            // Second call for the same column closes it (toggle), not re-open.
+            api.showColumnFilter('age');
+            await waitForMenu();
+            expect(isMenuVisible()).toBe(false);
+
+            // A subsequent call opens it again from the closed state.
+            api.showColumnFilter('age');
+            await waitForMenu();
+            expect(isMenuVisible()).toBe(true);
+        });
+
         test('multi-column prop update does not fire onFilterModelChange', async () => {
             const onFilterModelChange = vi.fn();
 

@@ -27,5 +27,11 @@ export interface IMenuFactory {
     ): void;
     isMenuEnabled(column: AgColumn): boolean;
     hideActiveMenu(): void;
+    /**
+     * If implemented, lets the menu service treat showFilterMenu calls for the
+     * already-shown column as a toggle (close instead of re-open). Optional
+     * because not every factory needs the toggle behavior — implementations
+     * that don't define it simply don't toggle.
+     */
     isMenuShownFor?(column: AgColumn): boolean;
 }
