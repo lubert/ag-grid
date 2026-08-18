@@ -355,9 +355,7 @@ export class GridBodyCtrl extends BeanStub {
         this.addManagedElementListeners(eBodyViewport, { contextmenu: listener });
         touchSvc?.mockBodyContextMenu(this, listener);
 
-        this.addManagedElementListeners(eBodyViewport, {
-            wheel: this.onBodyViewportWheel.bind(this, popupSvc),
-        });
+        this.addBodyViewportWheelListener(popupSvc);
 
         const onStickyWheel = this.onStickyWheel.bind(this);
 
@@ -444,11 +442,38 @@ export class GridBodyCtrl extends BeanStub {
         }
     }
 
-    private onBodyViewportWheel(popupSvc: PopupService, e: WheelEvent): void {
-        if (!this.gos.get('suppressScrollWhenPopupsAreOpen')) {
-            return;
-        }
+    /**
+     * A wheel listener is registered non-passive, so one on the body viewport puts
+     * the whole grid into the browser's blocking wheel region: every wheel event
+     * then has to round-trip through the main thread, including a hit test against
+     * the full grid DOM, before the scroll can be applied. The handler below only
+     * ever preventDefaults when suppressScrollWhenPopupsAreOpen is on, so while it
+     * is off we register nothing rather than pay that for a no-op. The option is
+     * settable at runtime, hence the sync on change.
+     */
+    private addBodyViewportWheelListener(popupSvc?: PopupService): void {
+        let removeListener: (() => void) | null = null;
 
+        const sync = () => {
+            const wanted = this.gos.get('suppressScrollWhenPopupsAreOpen');
+            if (wanted === (removeListener !== null)) {
+                return;
+            }
+            if (wanted) {
+                [removeListener] = this.addManagedElementListeners(this.eBodyViewport, {
+                    wheel: this.onBodyViewportWheel.bind(this, popupSvc),
+                });
+            } else {
+                removeListener?.();
+                removeListener = null;
+            }
+        };
+
+        sync();
+        this.addManagedPropertyListener('suppressScrollWhenPopupsAreOpen', sync);
+    }
+
+    private onBodyViewportWheel(popupSvc: PopupService | undefined, e: WheelEvent): void {
         if (popupSvc?.hasAnchoredPopup()) {
             e.preventDefault();
         }
