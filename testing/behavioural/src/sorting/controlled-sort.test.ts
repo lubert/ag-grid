@@ -1,14 +1,23 @@
 import { getByTestId } from '@testing-library/dom';
 import { userEvent } from '@testing-library/user-event';
 
-import { ClientSideRowModelModule, agTestIdFor, getGridElement, setupAgTestIds } from 'ag-grid-community';
+import {
+    ClientSideRowModelModule,
+    CsvExportModule,
+    PinnedRowModule,
+    QuickFilterModule,
+    RowSelectionModule,
+    agTestIdFor,
+    getGridElement,
+    setupAgTestIds,
+} from 'ag-grid-community';
 import type { GridApi, SortModelItem } from 'ag-grid-community';
 
 import { TestGridsManager, asyncSetTimeout } from '../test-utils';
 
 describe('Controlled Sort', () => {
     const gridsManager = new TestGridsManager({
-        modules: [ClientSideRowModelModule],
+        modules: [ClientSideRowModelModule, PinnedRowModule, CsvExportModule, QuickFilterModule, RowSelectionModule],
     });
 
     // The order a server sorted them in: not the order of any column.
@@ -149,6 +158,60 @@ describe('Controlled Sort', () => {
         await asyncSetTimeout(0);
         expect(sorts(api)).toEqual({ name: 'asc', age: null });
         expect(names(api)).toEqual(['Charlie', 'Alice', 'Bob']);
+    });
+
+    test('leaving controlled mode sorts the rows by the sort the header shows', async () => {
+        const api = await gridsManager.createGridAndWait('grid1', {
+            columnDefs,
+            rowData,
+            sortModel: [{ colId: 'name', sort: 'asc' }],
+        });
+        expect(names(api)).toEqual(['Charlie', 'Alice', 'Bob']);
+
+        api.setGridOption('sortModel', undefined);
+
+        expect(sorts(api)).toEqual({ name: 'asc', age: null });
+        expect(names(api)).toEqual(['Alice', 'Bob', 'Charlie']);
+    });
+
+    test('entering controlled mode with the current sort puts rows back in rowData order', async () => {
+        const api = await gridsManager.createGridAndWait('grid1', { columnDefs, rowData });
+        await clickHeader(api, 'name');
+        expect(names(api)).toEqual(['Alice', 'Bob', 'Charlie']);
+
+        api.setGridOption('sortModel', [{ colId: 'name', sort: 'asc' }]);
+
+        expect(sorts(api)).toEqual({ name: 'asc', age: null });
+        expect(names(api)).toEqual(['Charlie', 'Alice', 'Bob']);
+    });
+
+    test('pinned rows keep rowData order too', async () => {
+        const api = await gridsManager.createGridAndWait('grid1', {
+            columnDefs,
+            rowData,
+            enableRowPinning: true,
+            isRowPinned: (node) => (node.data?.name === 'Bob' ? null : 'top'),
+            sortModel: [{ colId: 'name', sort: 'asc' }],
+        });
+
+        const pinned: string[] = [];
+        api.forEachPinnedRow('top', (node) => pinned.push(node.data.name));
+        expect(pinned).toEqual(['Charlie', 'Alice']);
+    });
+
+    test('export keeps rowData order for rows the grid is not showing', async () => {
+        const api = await gridsManager.createGridAndWait('grid1', {
+            columnDefs,
+            rowData,
+            rowSelection: { mode: 'multiRow' },
+            sortModel: [{ colId: 'name', sort: 'asc' }],
+        });
+        api.selectAll();
+        // Hidden rows have no display index, so export orders them by the sort.
+        api.setGridOption('quickFilterText', 'nobody');
+
+        const csv = api.getDataAsCsv({ onlySelectedAllPages: true, columnKeys: ['name'], skipColumnHeaders: true });
+        expect(csv?.split(/\r?\n/).map((line) => line.replace(/"/g, ''))).toEqual(['Charlie', 'Alice', 'Bob']);
     });
 
     test('without the prop, the grid sorts as before', async () => {

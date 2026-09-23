@@ -48,9 +48,7 @@ export class SortStage extends BeanStub implements NamedBean, IRowNodeSortStage 
     public readonly refreshProps: (keyof GridOptions<any>)[] = ['postSortRows', 'groupDisplayType', 'accentedSort'];
 
     public execute(changedPath: ChangedPath | undefined, changedRowNodes: ChangedRowNodes | undefined): void {
-        // In controlled sort mode the rows arrive in the order the sortModel describes.
-        const sortSvc = this.beans.sortSvc!;
-        const sortOptions = sortSvc.isControlledSortMode() ? [] : sortSvc.getSortOptions();
+        const sortOptions = this.beans.sortSvc!.getRowSortOptions();
 
         const useDeltaSort =
             sortOptions.length > 0 &&

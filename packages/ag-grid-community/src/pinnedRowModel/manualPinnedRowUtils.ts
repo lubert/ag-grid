@@ -74,7 +74,7 @@ export class PinnedRows {
 
     public sort(): void {
         const { sortSvc, rowNodeSorter, gos } = this.beans;
-        const sortOptions = sortSvc?.getSortOptions() ?? [];
+        const sortOptions = sortSvc?.getRowSortOptions() ?? [];
         // first remove the grand total row so it doesn't get sorted
         const order = this.order;
         const grandTotalNode = _removeGrandTotalRow(order);

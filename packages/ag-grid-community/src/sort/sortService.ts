@@ -16,9 +16,23 @@ import { SortIndicatorComp, SortIndicatorSelector } from './sortIndicatorComp';
 export class SortService extends BeanStub implements NamedBean {
     beanName = 'sortSvc' as const;
 
+    private wasControlled = false;
+
     public postConstruct(): void {
-        this.addManagedEventListeners({ newColumnsLoaded: () => this.syncControlledSort() });
-        this.addManagedPropertyListener('sortModel', () => this.syncControlledSort());
+        this.wasControlled = this.isControlledSortMode();
+        this.addManagedEventListeners({ newColumnsLoaded: () => this.syncControlledSort(false) });
+        this.addManagedPropertyListener('sortModel', () => {
+            const controlled = this.isControlledSortMode();
+            const modeChanged = controlled !== this.wasControlled;
+            this.wasControlled = controlled;
+            if (controlled) {
+                this.syncControlledSort(modeChanged);
+            } else if (modeChanged) {
+                // Leaving controlled mode: the columns keep the last prop's sort, and the
+                // rows, left in rowData order until now, are sorted by it.
+                this.dispatchSortChangedEvents('gridOptionsChanged');
+            }
+        });
     }
 
     /** Returns true when the grid is in controlled sort mode (sortModel prop is provided). */
@@ -26,8 +40,12 @@ export class SortService extends BeanStub implements NamedBean {
         return this.gos.exists('sortModel');
     }
 
-    /** Makes every column's sort match the sortModel prop. */
-    private syncControlledSort(): void {
+    /**
+     * Makes every column's sort match the sortModel prop. Sorting changes are announced
+     * when a column changed, or always when `modeChanged` (entering controlled mode with
+     * the sort the columns already had must still put the rows back in rowData order).
+     */
+    private syncControlledSort(modeChanged: boolean): void {
         if (!this.isControlledSortMode()) {
             return;
         }
@@ -46,7 +64,7 @@ export class SortService extends BeanStub implements NamedBean {
             this.setColSort(col, sortDef, 'gridOptionsChanged');
             this.setColSortIndex(col, index ?? null);
         });
-        if (changed.length) {
+        if (changed.length || modeChanged) {
             this.dispatchSortChangedEvents('gridOptionsChanged', changed);
         }
     }
@@ -321,6 +339,14 @@ export class SortService extends BeanStub implements NamedBean {
 
     public getSortOptions(): SortOption[] {
         return this.collectSortItems();
+    }
+
+    /**
+     * The sort the grid applies to rows itself: none in controlled sort mode, where rows
+     * arrive in the order the sortModel describes.
+     */
+    public getRowSortOptions(): SortOption[] {
+        return this.isControlledSortMode() ? [] : this.getSortOptions();
     }
 
     public canColumnDisplayMixedSort(column: AgColumn): boolean {

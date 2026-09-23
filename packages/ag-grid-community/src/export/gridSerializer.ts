@@ -279,7 +279,7 @@ export class GridSerializer extends BeanStub implements NamedBean {
         if (!sortSvc || !rowNodeSorter) {
             return;
         }
-        const sortOptions = sortSvc.getSortOptions();
+        const sortOptions = sortSvc.getRowSortOptions();
         const compareNodes = (rowA: RowNode, rowB: RowNode): number => {
             if (rowA.rowIndex != null && rowB.rowIndex != null) {
                 // if the rows have rowIndexes, this is the easiest way to compare,

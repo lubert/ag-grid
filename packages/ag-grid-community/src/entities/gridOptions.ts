@@ -799,6 +799,9 @@ export interface GridOptions<TData = any> {
      * reflect this prop, user interactions fire `onSortModelChange` instead of updating
      * internal state, and the grid never reorders rows itself: they display in `rowData`
      * order. Column state and column definitions do not change the sort in this mode.
+     * Without an `onSortModelChange` handler, the UI cannot change the sort at all.
+     * Setting it back to `undefined` leaves controlled mode: columns keep the last sort,
+     * and the grid sorts the rows by it from then on.
      */
     sortModel?: SortModelItem[];
     /**
