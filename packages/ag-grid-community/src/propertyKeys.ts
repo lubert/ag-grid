@@ -113,6 +113,7 @@ const OBJECT_GRID_OPTIONS: KeysLike<object | HTMLElement>[] = [
     'findOptions',
     'filterHandlers',
     'filterModel',
+    'sortModel',
     'groupHierarchyConfig',
 ];
 
@@ -408,6 +409,7 @@ export const _FUNCTION_GRID_OPTIONS: (CallbackKeys | FunctionKeys)[] = [
     'isRowPinned',
     'isRowValidDropPosition',
     'onFilterModelChange',
+    'onSortModelChange',
 ];
 
 // angular generation of component

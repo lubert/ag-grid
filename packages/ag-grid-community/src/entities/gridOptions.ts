@@ -34,6 +34,7 @@ import type {
     ChartDestroyedEvent,
     ChartOptionsChangedEvent,
     ChartRangeSelectionChangedEvent,
+    ColumnEventType,
     ColumnEverythingChangedEvent,
     ColumnGroupOpenedEvent,
     ColumnHeaderClickedEvent,
@@ -193,6 +194,7 @@ import type { RowModelType } from '../interfaces/iRowModel';
 import type { IRowNode, RowPinnedType } from '../interfaces/iRowNode';
 import type { IServerSideDatasource } from '../interfaces/iServerSideDatasource';
 import type { SideBarDef } from '../interfaces/iSideBar';
+import type { SortModelItem } from '../interfaces/iSortModelItem';
 import type { StatusBar } from '../interfaces/iStatusPanel';
 import type { IViewportDatasource } from '../interfaces/iViewportDatasource';
 import type { DefaultMenuItem, MenuItemDef } from '../interfaces/menuItem';
@@ -791,6 +793,20 @@ export interface GridOptions<TData = any> {
      * the parent should update `filterModel` to apply the change.
      */
     onFilterModelChange?: (model: FilterModel, source: FilterChangedEventSourceType) => void;
+    /**
+     * Externally controlled sort state, for rows that arrive already sorted (by a server,
+     * say). When provided, the grid is in controlled sort mode: header sort indicators
+     * reflect this prop, user interactions fire `onSortModelChange` instead of updating
+     * internal state, and the grid never reorders rows itself: they display in `rowData`
+     * order. Column state and column definitions do not change the sort in this mode.
+     */
+    sortModel?: SortModelItem[];
+    /**
+     * Called when the user changes the sort via the UI while in controlled sort mode
+     * (`sortModel` prop is provided), with the model that change would produce. The grid
+     * does NOT update its internal sort; the parent should update `sortModel` to apply it.
+     */
+    onSortModelChange?: (model: SortModelItem[], source: ColumnEventType) => void;
 
     // *** Integrated Charts *** //
     /**

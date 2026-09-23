@@ -248,7 +248,8 @@ export function updateSomeColumnState(
         column.setVisible(!hide, source);
     }
 
-    if (sortSvc) {
+    // In controlled sort mode the sortModel prop owns the sort, not column state.
+    if (sortSvc && !sortSvc.isControlledSortMode()) {
         // sort - anything but undefined will set sort, thus null or empty string will clear the sort
         sortSvc.updateColSort(column, sort, source);
 

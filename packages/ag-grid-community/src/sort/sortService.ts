@@ -16,6 +16,63 @@ import { SortIndicatorComp, SortIndicatorSelector } from './sortIndicatorComp';
 export class SortService extends BeanStub implements NamedBean {
     beanName = 'sortSvc' as const;
 
+    public postConstruct(): void {
+        this.addManagedEventListeners({ newColumnsLoaded: () => this.syncControlledSort() });
+        this.addManagedPropertyListener('sortModel', () => this.syncControlledSort());
+    }
+
+    /** Returns true when the grid is in controlled sort mode (sortModel prop is provided). */
+    public isControlledSortMode(): boolean {
+        return this.gos.exists('sortModel');
+    }
+
+    /** Makes every column's sort match the sortModel prop. */
+    private syncControlledSort(): void {
+        if (!this.isControlledSortMode()) {
+            return;
+        }
+        const model = this.gos.get('sortModel') ?? [];
+        const indexById = new Map(model.map((item, i) => [item.colId, i]));
+        const changed: AgColumn[] = [];
+        this.beans.colModel.forAllCols((col) => {
+            const index = indexById.get(col.getColId());
+            const item = index === undefined ? undefined : model[index];
+            const sortDef: SortDef | undefined = item
+                ? { direction: item.sort, type: _normalizeSortType(item.type) }
+                : undefined;
+            if (!_areSortDefsEqual(col.getSortDef(), sortDef) || (col.sortIndex ?? null) !== (index ?? null)) {
+                changed.push(col);
+            }
+            this.setColSort(col, sortDef, 'gridOptionsChanged');
+            this.setColSortIndex(col, index ?? null);
+        });
+        if (changed.length) {
+            this.dispatchSortChangedEvents('gridOptionsChanged', changed);
+        }
+    }
+
+    /**
+     * The sort model a UI change would produce, fired to `onSortModelChange` in place of
+     * applying it. Mirrors setSortForColumn: a single sort replaces the model, a multi sort
+     * moves the changed columns to the end, and no direction removes them.
+     */
+    private proposeSort(columns: AgColumn[], sortDef: SortDef, multiSort: boolean, source: ColumnEventType): void {
+        const ids = new Set(columns.map((col) => col.getColId()));
+        const current = this.gos.get('sortModel') ?? [];
+        const next: SortModelItem[] = multiSort ? current.filter((item) => !ids.has(item.colId)) : [];
+        const { direction, type } = _getSortDefFromInput(sortDef);
+        if (direction) {
+            for (const col of columns) {
+                const item: SortModelItem = { colId: col.getColId(), sort: direction };
+                if (type && type !== 'default') {
+                    item.type = type;
+                }
+                next.push(item);
+            }
+        }
+        this.gos.get('onSortModelChange')?.(next, source);
+    }
+
     public progressSort(column: AgColumn, multiSort: boolean, source: ColumnEventType): void {
         const nextDirection = this.getNextSortDirection(column);
         this.setSortForColumn(column, nextDirection, multiSort, source);
@@ -43,10 +100,15 @@ export class SortService extends BeanStub implements NamedBean {
             }
         }
 
+        const doingMultiSort = (multiSort || gos.get('alwaysMultiSort')) && !gos.get('suppressMultiSort');
+        if (this.isControlledSortMode()) {
+            this.proposeSort(columnsToUpdate, sortDef, doingMultiSort, source);
+            return;
+        }
+
         for (const col of columnsToUpdate) {
             this.setColSort(col, sortDef, source);
         }
-        const doingMultiSort = (multiSort || gos.get('alwaysMultiSort')) && !gos.get('suppressMultiSort');
 
         // clear sort on all columns except those changed, and update the icons
         const updatedColumns: AgColumn[] = [];
